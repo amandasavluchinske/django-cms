@@ -8,7 +8,7 @@ from django.template.context import Context
 from django.test.utils import override_settings
 from django.utils.translation import activate, override as force_language
 
-from cms.api import create_page, create_page_content
+from cms.api import create_page, create_page_content, create_title
 from cms.apphook_pool import apphook_pool
 from cms.cms_menus import get_visible_page_contents
 from cms.models import ACCESS_PAGE_AND_DESCENDANTS, Page, PageContent
@@ -1859,7 +1859,7 @@ class SoftrootTests(CMSTestCase):
 
         which is frankly overwhelming.
 
-        By making “Department of Mediaeval Surgery” a soft root, the menu
+        By making "Department of Mediaeval Surgery" a soft root, the menu
         becomes much more manageable:
 
             Department of Mediaeval Surgery
@@ -2057,3 +2057,37 @@ class SoftrootTests(CMSTestCase):
         self.assertEqual(len(cmsnode.children), 0)
         self.assertEqual(len(shopnode.children), 0)
         self.assertEqual(len(peoplenode.children), 0)
+
+    def test_menu_language_from_request(self):
+        """
+        Test that menu nodes respect request.LANGUAGE_CODE when building nodes,
+        regardless of whether language prefix patterns are used.
+        """
+        # Create a page with content in multiple languages
+        page = create_page("Test", "nav_playground.html", "en")
+        create_title("de", "Test DE", page)
+        create_title("fr", "Test FR", page)
+
+        # Create a request with a custom LANGUAGE_CODE
+        request = self.get_request("/")
+        request.LANGUAGE_CODE = "fr"  # Simulate middleware setting language
+
+        # Get menu nodes
+        renderer = menu_pool.get_renderer(request)
+        nodes = renderer.get_nodes()
+
+        # Verify the nodes are in French
+        self.assertEqual(len(nodes), 1)
+        self.assertEqual(nodes[0].title, "Test FR")
+
+        # Test with a different language
+        request.LANGUAGE_CODE = "de"
+        renderer = menu_pool.get_renderer(request)
+        nodes = renderer.get_nodes()
+        self.assertEqual(nodes[0].title, "Test DE")
+
+        # Test fallback to settings.LANGUAGES[0] only when no LANGUAGE_CODE is set
+        delattr(request, "LANGUAGE_CODE")
+        renderer = menu_pool.get_renderer(request)
+        nodes = renderer.get_nodes()
+        self.assertEqual(nodes[0].title, "Test")  # English is first in LANGUAGES
