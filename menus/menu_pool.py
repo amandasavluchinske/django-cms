@@ -23,7 +23,7 @@ from menus.base import Menu
 from menus.exceptions import NamespaceAlreadyRegistered
 from menus.models import CacheKey
 
-logger = getLogger('menus')
+logger = getLogger("menus")
 
 
 def _build_nodes_inner_for_one_menu(nodes, menu_class_name):
@@ -47,7 +47,7 @@ def _build_nodes_inner_for_one_menu(nodes, menu_class_name):
         node = nodes.pop(0)
 
         # Increment the "seen" counter for this specific node.
-        node._counter = getattr(node, '_counter', 0) + 1
+        node._counter = getattr(node, "_counter", 0) + 1
 
         # Implicit namespacing by menu.__name__
         if not node.namespace:
@@ -87,7 +87,7 @@ def _get_menu_class_for_instance(menu_class, instance):
     menu_class but is bound to instance.
     This means it sets the "instance" attribute of the class.
     """
-    attrs = {'instance': instance}
+    attrs = {"instance": instance}
     class_name = menu_class.__name__
     meta_class = type(menu_class)
     return meta_class(class_name, (menu_class,), attrs)
@@ -107,18 +107,20 @@ class MenuRenderer:
         # instance lives.
         self.menus = pool.get_registered_menus(for_rendering=True)
         self.request = request
+        self.site = Site.objects.get_current(request)
         self.request_language = None
-        if is_language_prefix_patterns_used():
-            self.request_language = get_language_from_request(request, check_path=True)
+        if hasattr(request, "LANGUAGE_CODE"):
+            # use language from middleware - usually django.middleware.locale.LocaleMiddleware
+            self.request_language = request.LANGUAGE_CODE
         if not self.request_language:
-            self.request_language = get_default_language_for_site(get_current_site().pk)
+            self.request_language = get_default_language_for_site(self.site.pk)
         self.site = Site.objects.get_current(request)
         toolbar = getattr(request, "toolbar", None)
         self.edit_or_preview = toolbar.edit_mode_active or toolbar.preview_mode_active if toolbar else False
 
     @property
     def cache_key(self):
-        prefix = get_cms_setting('CACHE_PREFIX')
+        prefix = get_cms_setting("CACHE_PREFIX")
 
         key = f"{prefix}menu_nodes_{self.request_language}_{self.site.pk}"
 
@@ -126,9 +128,9 @@ class MenuRenderer:
             key += f"_{self.request.user.pk}_user"
 
         if self.edit_or_preview:
-            key += ':edit'
+            key += ":edit"
         else:
-            key += ':public'
+            key += ":public"
         return key
 
     @cached_property
@@ -168,7 +170,7 @@ class MenuRenderer:
             return cached_nodes
 
         final_nodes = []
-        toolbar = getattr(self.request, 'toolbar', None)
+        toolbar = getattr(self.request, "toolbar", None)
 
         for menu_class_name in self.menus:
             menu = self.get_menu(menu_class_name)
@@ -182,19 +184,19 @@ class MenuRenderer:
                 if toolbar and toolbar.is_staff:
                     messages.error(
                         self.request,
-                        _('Menu %s cannot be loaded. Please, make sure all its urls exist and can be resolved.') %
-                        menu_class_name
+                        _("Menu %s cannot be loaded. Please, make sure all its urls exist and can be resolved.")
+                        % menu_class_name,
                     )
                 logger.error("Menu %s could not be loaded." % menu_class_name, exc_info=True)
             # nodes is a list of navigation nodes (page tree in cms + others)
             final_nodes += _build_nodes_inner_for_one_menu(nodes, menu_class_name)
 
-        cache.set(key, final_nodes, get_cms_setting('CACHE_DURATIONS')['menus'])
+        cache.set(key, final_nodes, get_cms_setting("CACHE_DURATIONS")["menus"])
 
         if not self.is_cached:
             # No need to invalidate the internal lookup cache,
             # just set the value directly.
-            self.__dict__['is_cached'] = True
+            self.__dict__["is_cached"] = True
             # We need to have a list of the cache keys for languages and sites that
             # span several processes - so we follow the Django way and share through
             # the database. It's still cheaper than recomputing every time!
@@ -246,8 +248,7 @@ class MenuRenderer:
         # modifiers can't change on a request basis.
         for cls in self.pool.get_registered_modifiers():
             inst = cls(renderer=self)
-            nodes = inst.modify(
-                self.request, nodes, namespace, root_id, post_cut, breadcrumb)
+            nodes = inst.modify(self.request, nodes, namespace, root_id, post_cut, breadcrumb)
         return nodes
 
     def get_nodes(self, namespace=None, root_id=None, breadcrumb=False):
@@ -267,7 +268,6 @@ class MenuRenderer:
 
 
 class MenuPool:
-
     def __init__(self):
         self.menus = {}
         self.modifiers = []
@@ -283,8 +283,9 @@ class MenuPool:
     def discover_menus(self):
         if self.discovered:
             return
-        autodiscover_modules('cms_menus')
+        autodiscover_modules("cms_menus")
         from menus.modifiers import register
+
         register()
         self.discovered = True
 
@@ -331,8 +332,7 @@ class MenuPool:
                 # instantiated, none-the-less.
                 registered_menus[menu_class_name] = menu_cls
             else:
-                raise ValidationError(
-                    "Something was registered as a menu, but isn't.")
+                raise ValidationError("Something was registered as a menu, but isn't.")
         return registered_menus
 
     def get_registered_modifiers(self):
@@ -347,7 +347,7 @@ class MenuPool:
         else:
             cache_keys = CacheKey.objects.get_keys(site_id, language)
 
-        to_be_deleted = cache_keys.distinct().values_list('key', flat=True)
+        to_be_deleted = cache_keys.distinct().values_list("key", flat=True)
 
         if to_be_deleted:
             cache.delete_many(to_be_deleted)
@@ -355,15 +355,16 @@ class MenuPool:
 
     def register_menu(self, menu_cls):
         from menus.base import Menu
+
         assert issubclass(menu_cls, Menu)
         if menu_cls.__name__ in self.menus:
-            raise NamespaceAlreadyRegistered(
-                f"[{menu_cls.__name__}] a menu with this name is already registered")
+            raise NamespaceAlreadyRegistered(f"[{menu_cls.__name__}] a menu with this name is already registered")
         # Note: menu_cls should still be the menu CLASS at this point.
         self.menus[menu_cls.__name__] = menu_cls
 
     def register_modifier(self, modifier_class):
         from menus.base import Modifier
+
         assert issubclass(modifier_class, Modifier)
         if modifier_class not in self.modifiers:
             self.modifiers.append(modifier_class)
@@ -381,8 +382,11 @@ class MenuPool:
         # (in case of attached menus).
         menus = self.get_registered_menus(for_rendering=False)
         return sorted(
-            {(menu.__name__, menu.name) for menu_class_name, menu in menus.items()
-             if getattr(menu, name, None) == value}
+            {
+                (menu.__name__, menu.name)
+                for menu_class_name, menu in menus.items()
+                if getattr(menu, name, None) == value
+            }
         )
 
     def get_nodes_by_attribute(self, nodes, name, value):

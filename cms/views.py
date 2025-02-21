@@ -50,9 +50,12 @@ from cms.utils.placeholder import get_declared_placeholders_for_obj, get_placeho
 
 
 def _clean_redirect_url(redirect_url, language):
-    if (redirect_url and is_language_prefix_patterns_used() and redirect_url[0] == "/" and not redirect_url.startswith(
-            f"/{language}/"
-    )):
+    if (
+        redirect_url
+        and is_language_prefix_patterns_used()
+        and redirect_url[0] == "/"
+        and not redirect_url.startswith(f"/{language}/")
+    ):
         # add language prefix to url
         redirect_url = f"/{language}/{redirect_url.lstrip('/')}"
     return redirect_url
@@ -66,9 +69,8 @@ def details(request, slug):
     is_authenticated = request.user.is_authenticated
     response_timestamp = now()
     if get_cms_setting("PAGE_CACHE") and (
-        not hasattr(request, 'toolbar') or (
-            not request.toolbar.edit_mode_active and not request.toolbar.show_toolbar and not is_authenticated
-        )
+        not hasattr(request, "toolbar")
+        or (not request.toolbar.edit_mode_active and not request.toolbar.show_toolbar and not is_authenticated)
     ):
         cache_content = get_page_cache(request)
         if cache_content is not None:
@@ -77,8 +79,7 @@ def details(request, slug):
             response.xframe_options_exempt = True
             response.headers = headers
             # Recalculate the max-age header for this cached response
-            max_age = int(
-                (expires_datetime - response_timestamp).total_seconds() + 0.5)
+            max_age = int((expires_datetime - response_timestamp).total_seconds() + 0.5)
             patch_cache_control(response, max_age=max_age)
             return response
 
@@ -96,8 +97,8 @@ def details(request, slug):
         if slug.lower() != slug:
             # Only redirect if the slug changes
             redirect_url = reverse("pages-details-by-slug", kwargs={"slug": slug.lower()})
-            if get_cms_setting('REDIRECT_PRESERVE_QUERY_PARAMS'):
-                query_string = request.META.get('QUERY_STRING')
+            if get_cms_setting("REDIRECT_PRESERVE_QUERY_PARAMS"):
+                query_string = request.META.get("QUERY_STRING")
                 if query_string:
                     redirect_url += "?" + query_string
             return HttpResponseRedirect(redirect_url)
@@ -110,16 +111,17 @@ def details(request, slug):
 
     request.current_page = page
 
-    if hasattr(request, 'user') and request.user.is_staff:
+    if hasattr(request, "user") and request.user.is_staff:
         user_languages = get_language_list(site_id=site.pk)
     else:
         user_languages = get_public_languages(site_id=site.pk)
 
     request_language = None
-    if is_language_prefix_patterns_used():
-        request_language = get_language_from_request(request, check_path=True)
+    if hasattr(request, "LANGUAGE_CODE"):
+        # use language from middleware - usually django.middleware.locale.LocaleMiddleware
+        request_language = request.LANGUAGE_CODE
     if not request_language:
-        request_language = get_default_language_for_site(get_current_site().pk)
+        request_language = get_default_language_for_site(site.pk)
 
     if not page.is_home and request_language not in user_languages:
         # The homepage is treated differently because
@@ -133,14 +135,11 @@ def details(request, slug):
     # The languages are then filtered out by the user allowed languages
     page._get_page_content_cache(None, fallback=True, force_reload=True)
     pagecontent_languages = list(page.page_content_cache.keys())
-    available_languages = [
-        language for language in user_languages
-        if language in pagecontent_languages
-    ]
+    available_languages = [language for language in user_languages if language in pagecontent_languages]
 
     own_urls = [
         request.build_absolute_uri(request.path),
-        '/%s' % request.path,
+        "/%s" % request.path,
         request.path,
     ]
 
@@ -160,8 +159,7 @@ def details(request, slug):
 
     # Only fallback to languages the user is allowed to see
     fallback_languages = [
-        language for language in fallbacks
-        if language != request_language and language in available_languages
+        language for language in fallbacks if language != request_language and language in available_languages
     ]
     language_is_unavailable = request_language not in available_languages
     first_fallback_language = next(iter(fallback_languages or []), None)
@@ -174,24 +172,23 @@ def details(request, slug):
         # There is no page with the requested language and
         # redirect_on_fallback is True,
         # so redirect to the first configured / available fallback language
-        redirect_url = page.get_absolute_url(
-            first_fallback_language, fallback=False)
+        redirect_url = page.get_absolute_url(first_fallback_language, fallback=False)
     else:
         page_path = page.get_absolute_url(request_language)
         page_slug = page.get_path(request_language) or page.get_slug(request_language)
 
-        if slug and slug != page_slug and request.path[:len(page_path)] != page_path:
+        if slug and slug != page_slug and request.path[: len(page_path)] != page_path:
             # The current language does not match its slug.
             # Redirect to the current language.
             return HttpResponseRedirect(page_path)
         # Check if the page has a redirect url defined for this language.
-        redirect_url = page.get_redirect(request_language, fallback=False) or ''
+        redirect_url = page.get_redirect(request_language, fallback=False) or ""
         redirect_url = _clean_redirect_url(redirect_url, request_language)
 
     if redirect_url:
         if redirect_url not in own_urls:
-            if get_cms_setting('REDIRECT_PRESERVE_QUERY_PARAMS'):
-                query_string = request.META.get('QUERY_STRING')
+            if get_cms_setting("REDIRECT_PRESERVE_QUERY_PARAMS"):
+                query_string = request.META.get("QUERY_STRING")
                 if query_string:
                     redirect_url += "?" + query_string
             # prevent redirect to self
@@ -216,7 +213,7 @@ def details(request, slug):
     content = page.get_content_obj(language=content_language)
     # use the page object with populated cache
     content.page = page
-    if hasattr(request, 'toolbar'):
+    if hasattr(request, "toolbar"):
         request.toolbar.set_object(content)
 
     return render_pagecontent(request, content)
@@ -239,7 +236,7 @@ def login(request):
     if form.is_valid():
         auth_login(request, form.user_cache)
     else:
-        redirect_to += '?cms_toolbar_login_error=1'
+        redirect_to += "?cms_toolbar_login_error=1"
     return HttpResponseRedirect(redirect_to)
 
 
@@ -259,12 +256,12 @@ def render_object_structure(request, content_type_id, object_id):
         raise Http404 from err
 
     context = {
-        'object': content_type_obj,
-        'cms_toolbar': request.toolbar,
+        "object": content_type_obj,
+        "cms_toolbar": request.toolbar,
     }
     toolbar = get_toolbar_from_request(request)
     toolbar.set_object(content_type_obj)
-    return render(request, 'cms/toolbar/structure.html', context)
+    return render(request, "cms/toolbar/structure.html", context)
 
 
 def render_placeholder_content(request, obj, context):
@@ -288,22 +285,22 @@ def render_object_endpoint(request, content_type_id, object_id, require_editable
         model = content_type.model_class()
 
     if require_editable and not is_editable_model(model):
-        return HttpResponseBadRequest('Requested object does not support frontend rendering')
+        return HttpResponseBadRequest("Requested object does not support frontend rendering")
 
     try:
         if issubclass(model, PageContent):
             # An apphook might be attached to a PageContent object
             content_type_obj = model.admin_manager.select_related("page").get(pk=object_id)
             request.current_page = content_type_obj.page
-            if (
-                content_type_obj.page.application_urls and  # noqa: W504
-                content_type_obj.page.application_urls in dict(apphook_pool.get_apphooks())
+            if content_type_obj.page.application_urls and content_type_obj.page.application_urls in dict(
+                apphook_pool.get_apphooks()
             ):
                 try:
                     # If so, try get the absolute URL and pass it to the toolbar as request_path
                     # The apphook's view function will be called.
                     absolute_url = content_type_obj.get_absolute_url()
                     from cms.toolbar.toolbar import CMSToolbar
+
                     request.toolbar = CMSToolbar(request, request_path=absolute_url)
                     # Resolve the apphook's url to get its view function
                     view_func, args, kwargs = resolve(absolute_url)
@@ -317,10 +314,10 @@ def render_object_endpoint(request, content_type_id, object_id, require_editable
     except ObjectDoesNotExist as err:
         raise Http404 from err
 
-    extension = apps.get_app_config('cms').cms_extension
+    extension = apps.get_app_config("cms").cms_extension
 
     if model not in extension.toolbar_enabled_models:
-        return HttpResponseBadRequest('Requested object does not support frontend rendering')
+        return HttpResponseBadRequest("Requested object does not support frontend rendering")
 
     toolbar = get_toolbar_from_request(request)
     toolbar.set_object(content_type_obj)

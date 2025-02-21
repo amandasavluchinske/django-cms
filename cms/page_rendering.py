@@ -16,16 +16,13 @@ def render_page(request, page, current_language, slug=None):
     """
     page_content = page.page_content_cache.get(current_language, page.get_content_obj(current_language))
     context = {}
-    context['lang'] = current_language
-    context['current_page'] = page
-    context['current_pagecontent'] = page_content
-    context['has_change_permissions'] = user_can_change_page(request.user, page)
-    context['has_view_permissions'] = user_can_view_page(request.user, page)
+    context["lang"] = current_language
+    context["current_page"] = page
+    context["current_pagecontent"] = page_content
+    context["has_change_permissions"] = user_can_change_page(request.user, page)
+    context["has_view_permissions"] = user_can_view_page(request.user, page)
 
-    cant_view_page = any([
-        not context['has_view_permissions'],
-        isinstance(page_content, EmptyPageContent)
-    ])
+    cant_view_page = any([not context["has_view_permissions"], isinstance(page_content, EmptyPageContent)])
     if cant_view_page:
         return _handle_no_page(request)
 
@@ -34,6 +31,7 @@ def render_page(request, page, current_language, slug=None):
         # Render placeholder content with minimal markup
 
         from cms.views import render_placeholder_content
+
         return render_placeholder_content(request, page_content, context)
     response = TemplateResponse(request, template, context)
     response.add_post_render_callback(set_page_cache)
@@ -53,9 +51,9 @@ def render_page(request, page, current_language, slug=None):
         # Do nothing, allowed is no header.
         return response
     elif xframe_options == constants.X_FRAME_OPTIONS_SAMEORIGIN:
-        response['X-Frame-Options'] = 'SAMEORIGIN'
+        response["X-Frame-Options"] = "SAMEORIGIN"
     elif xframe_options == constants.X_FRAME_OPTIONS_DENY:
-        response['X-Frame-Options'] = 'DENY'
+        response["X-Frame-Options"] = "DENY"
     return response
 
 
@@ -63,17 +61,15 @@ def _handle_no_page(request):
     try:
         # redirect to PageContent's changelist if the root page is detected
         resolved_path = resolve(request.path)
-        if resolved_path.url_name == 'pages-root':
-            redirect_url = admin_reverse('cms_pagecontent_changelist')
+        if resolved_path.url_name == "pages-root":
+            redirect_url = admin_reverse("cms_pagecontent_changelist")
             return HttpResponseRedirect(redirect_url)
 
         # add a $ to the end of the url (does not match on the cms anymore)
-        resolve('%s$' % request.path)
+        return resolve("%s$" % request.path).func(request)
     except Resolver404 as e:
         # raise a django http 404 page
-        exc = Http404(dict(path=request.path, tried=e.args[0]['tried']))
-        raise exc
-    raise Http404('CMS Page not found: %s' % request.path)
+        raise Http404(dict(path=request.path, tried=e.args[0]["tried"]))
 
 
 def _handle_no_apphook(request):
@@ -85,9 +81,9 @@ def _handle_no_apphook(request):
 
 def _render_welcome_page(request):
     context = {
-        'cms_version': __version__,
-        'django_debug': settings.DEBUG,
-        'next_url': reverse('pages-root'),
+        "cms_version": __version__,
+        "django_debug": settings.DEBUG,
+        "next_url": reverse("pages-root"),
     }
     return TemplateResponse(request, "cms/welcome.html", context)
 
