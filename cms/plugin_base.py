@@ -1,7 +1,7 @@
 import json
 import re
-from functools import lru_cache
-from typing import Optional
+from functools import lru_cache, wraps
+from typing import Callable, Optional, TypeVar, cast
 
 from django import forms
 from django.contrib import admin, messages
@@ -17,7 +17,7 @@ from django.utils.translation import gettext, gettext_lazy as _
 from cms import operations
 from cms.exceptions import SubClassNeededError
 from cms.models import CMSPlugin, Page
-from cms.toolbar.utils import get_plugin_content, get_plugin_toolbar_info, get_plugin_tree
+from cms.toolbar.utils import get_plugin_toolbar_info, get_plugin_tree
 from cms.utils.compat import DJANGO_5_1
 from cms.utils.conf import get_cms_setting
 
@@ -96,6 +96,36 @@ class CMSPluginBaseMetaclass(forms.MediaDefiningClass):
         if 'get_extra_plugin_menu_items' in attrs:
             new_plugin._has_extra_plugin_menu_items = True
         return new_plugin
+
+
+T = TypeVar('T', bound=Callable)
+
+def template_slot_caching(method: T) -> T:
+    """
+    Decorator that enables global caching for methods based on placeholder slots and templates.
+
+    This decorator marks methods that should participate in the CMS's template and slot-based
+    caching system. Decorated methods will have their results cached according to the
+    configuration specified in CMS_PLACEHOLDER_CONF.
+
+    Args:
+        method: The method to be decorated.
+
+    Returns:
+        The decorated method with template slot caching enabled.
+
+    Example:
+        @template_slot_caching
+        def get_child_class_overrides(cls, slot: str, page: Optional[Page] = None, instance: Optional[CMSPlugin] = None):
+            # Method implementation...
+            pass
+    """
+    @wraps(method)
+    def wrapper(*args, **kwargs):
+        return method(*args, **kwargs)
+
+    wrapper._template_slot_caching = True
+    return cast(T, wrapper)
 
 
 class CMSPluginBase(admin.ModelAdmin, metaclass=CMSPluginBaseMetaclass):
@@ -211,15 +241,15 @@ class CMSPluginBase(admin.ModelAdmin, metaclass=CMSPluginBaseMetaclass):
     #: Moving or adding child plugins are not affected.
     disable_edit = False
 
-    #: Determines if the add plugin modal is shown for this plugin (default: yes). Useful for plugins which,have no
+    #: Determines if the add plugin modal is shown for this plugin (default: yes). Useful for plugins which have no
     #: fields to fill, or which have valid default values for *all* fields.
     #: If the plugin's form will not validate with the default values the add plugin modal is shown with the form
-    #: errors
+    #: errors.
     show_add_form = True
 
     #: The plugin does not modify the context or request and its rendering is not influenced by its parent
-    #: plugins.
-    is_local = True
+    #: plugins. Defaults to ``True`` unless :setting:`CMS_ALWAYS_REFRESH_CONTENT` is set to ``True``.
+    is_local = not get_cms_setting("ALWAYS_REFRESH_CONTENT")
 
     # Warning: setting these to False, may have a serious performance impact,
     # because their child-parent-relation must be recomputed each
@@ -344,6 +374,7 @@ class CMSPluginBase(admin.ModelAdmin, metaclass=CMSPluginBaseMetaclass):
         return None
 
     @classmethod
+    @template_slot_caching
     def get_require_parent(cls, slot: str, page: Optional[Page] = None, instance: Optional[CMSPlugin] = None) -> bool:
         from cms.utils.placeholder import get_placeholder_conf
 
@@ -361,7 +392,7 @@ class CMSPluginBase(admin.ModelAdmin, metaclass=CMSPluginBaseMetaclass):
 
         :param request: Relevant ``HTTPRequest`` instance.
         :param instance: The ``CMSPlugin`` instance that is being rendered.
-        :rtype: ``None`` or ``datetime`` or ```time_delta`` or ``int``
+        :rtype: ``None`` or ``datetime`` or ``time_delta`` or ``int``
 
         Must return one of:
 
@@ -386,18 +417,18 @@ class CMSPluginBase(admin.ModelAdmin, metaclass=CMSPluginBaseMetaclass):
             An integer number of seconds that this plugin's content can be cached.
 
         There are constants are defined in ``cms.constants`` that may be
-        useful: :const:`~cms.constants.EXPIRE_NOW` and :data:`~cms.constants.MAX_EXPIRATION_TTL`.
+        useful: :const:`~cms.constants.EXPIRE_NOW` and :const:`~cms.constants.MAX_EXPIRATION_TTL`.
 
         An integer value of 0 (zero) or :const:`~cms.constants.EXPIRE_NOW` effectively means "do not
-        cache". Negative values will be treated as `EXPIRE_NOW`. Values exceeding the value
-        `~cms.constants.MAX_EXPIRATION_TTL` will be set to that value.
+        cache". Negative values will be treated as :const:`~cms.constants.EXPIRE_NOW`. Values exceeding the value
+        :const:`~cms.constants.MAX_EXPIRATION_TTL` will be set to that value.
 
-        Negative `timedelta` values or those greater than `MAX_EXPIRATION_TTL`
+        Negative `timedelta` values or those greater than ``MAX_EXPIRATION_TTL``
         will also be ranged in the same manner.
 
-        Similarly, `datetime` values earlier than now will be treated as
-        `EXPIRE_NOW`. Values greater than `MAX_EXPIRATION_TTL` seconds in the
-        future will be treated as `MAX_EXPIRATION_TTL` seconds in the future.
+        Similarly, ``datetime`` values earlier than now will be treated as
+        ``EXPIRE_NOW``. Values greater than ``MAX_EXPIRATION_TTL`` seconds in the
+        future will be treated as ``MAX_EXPIRATION_TTL`` seconds in the future.
         """
         return None
 
@@ -634,6 +665,7 @@ class CMSPluginBase(admin.ModelAdmin, metaclass=CMSPluginBaseMetaclass):
         return gettext('There are no further settings for this plugin. Please press save.')
 
     @classmethod
+    @template_slot_caching
     def get_child_class_overrides(cls, slot: str, page: Optional[Page] = None, instance: Optional[CMSPlugin] = None):
         """
         Returns a list of plugin types that are allowed
@@ -663,6 +695,7 @@ class CMSPluginBase(admin.ModelAdmin, metaclass=CMSPluginBaseMetaclass):
         return plugin_pool.registered_plugins
 
     @classmethod
+    @template_slot_caching
     def get_child_classes(cls, slot, page: Optional[Page] = None, instance: Optional[CMSPlugin] = None):
         """
         Returns a list of plugin types that can be added
@@ -698,6 +731,7 @@ class CMSPluginBase(admin.ModelAdmin, metaclass=CMSPluginBaseMetaclass):
         return child_classes
 
     @classmethod
+    @template_slot_caching
     def get_parent_classes(cls, slot: str, page: Optional[Page] = None, instance: Optional[CMSPlugin] = None):
         from cms.utils.placeholder import get_placeholder_conf
 
