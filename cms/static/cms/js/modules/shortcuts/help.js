@@ -5,6 +5,9 @@ import keyboard from '../keyboard';
 import tmpl from '../tmpl';
 var template = require('./help.html');
 
+console.log('keyboard object:', keyboard);
+console.log('keyboard methods:', Object.keys(keyboard));
+
 /**
  * Binds [?] to open modal with shorcuts listing.
  *
@@ -27,18 +30,54 @@ export default function initHelpShortcut() {
      * @private
      * @param {Event} e
      */
-    function openModal(e) {
-        e.preventDefault();
-
+    function openModal() {
         modal.open({
             title: CMS.config.lang.shortcuts,
-            width: 600,
-            height: 660,
             html: tmpl(template, { shortcutAreas: shortcutAreas })
         });
     }
 
-    keyboard.setContext('cms');
-    keyboard.bind('?', openModal);
+    // Handle both the keyboard library and DOM events
+    document.addEventListener('keydown', function(e) {
+        // Check if the active element is an input, textarea, or has contenteditable
+        var isInputField = (
+            document.activeElement.tagName === 'INPUT' ||
+            document.activeElement.tagName === 'TEXTAREA' ||
+            document.activeElement.contentEditable === 'true'
+        );
+
+        if (!isInputField && (e.key === '?' || (e.shiftKey && e.key === '/'))) {
+            e.preventDefault();
+            openModal();
+        }
+    });
+
+    keyboard.bind('?', function(e) {
+        var isInputField = (
+            document.activeElement.tagName === 'INPUT' ||
+            document.activeElement.tagName === 'TEXTAREA' ||
+            document.activeElement.contentEditable === 'true'
+        );
+
+        if (!isInputField) {
+            e.preventDefault();
+            openModal();
+        }
+    });
+
+    keyboard.bind('shift+/', function(e) {
+        var isInputField = (
+            document.activeElement.tagName === 'INPUT' ||
+            document.activeElement.tagName === 'TEXTAREA' ||
+            document.activeElement.contentEditable === 'true'
+        );
+
+        if (!isInputField) {
+            e.preventDefault();
+            openModal();
+        }
+    });
+
     $(document).on('pointerup.cms', '.cms-show-shortcuts', openModal);
 }
+
